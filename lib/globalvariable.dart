@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:assets_audio_player/assets_audio_player.dart';
+import 'package:cab_driver/models/driver.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
@@ -14,5 +15,8 @@ final CameraPosition googlePlex = CameraPosition(
 );
 FirebaseUser currentFirebaseUser;
 DatabaseReference tripRequestRef;
+DatabaseReference rideRef;
 StreamSubscription<Position> homeTabPositionStream;
 final assetsAudioPlayer = AssetsAudioPlayer();
+Position currentPosition;
+Driver currentDriverInfo;

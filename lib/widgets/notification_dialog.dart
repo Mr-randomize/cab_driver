@@ -1,5 +1,6 @@
 import 'package:cab_driver/brand_colors.dart';
 import 'package:cab_driver/globalvariable.dart';
+import 'package:cab_driver/helpers/helper_methods.dart';
 import 'package:cab_driver/models/trip_details.dart';
 import 'package:cab_driver/screens/new_trip_screen.dart';
 import 'package:cab_driver/widgets/TaxiOutlineButton.dart';
@@ -37,6 +38,7 @@ class NotificationDialog extends StatelessWidget {
 
       if (thisRideId == tripDetails.rideId) {
         newRiderRef.set('accepted');
+        HelperMethods.disableHomeTabLocationUpdates();
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => NewTripScreen(tripDetails)),

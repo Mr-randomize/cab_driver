@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cab_driver/brand_colors.dart';
 import 'package:cab_driver/globalvariable.dart';
 import 'package:cab_driver/helpers/push_notification_service.dart';
+import 'package:cab_driver/models/driver.dart';
 import 'package:cab_driver/widgets/AvailabilityButton.dart';
 import 'package:cab_driver/widgets/confirm_sheet.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,7 +22,6 @@ class _HomeTabState extends State<HomeTab> {
   GoogleMapController mapController;
 
   Completer<GoogleMapController> _controller = Completer();
-  Position currentPosition;
 
   String availabilityTitle = 'GO ONLINE';
   Color availabilityColor = BrandColors.colorOrange;
@@ -71,6 +71,14 @@ class _HomeTabState extends State<HomeTab> {
 
   void getCurrentDriverInfo() async {
     currentFirebaseUser = await FirebaseAuth.instance.currentUser();
+    DatabaseReference driverRef = FirebaseDatabase.instance
+        .reference()
+        .child('drivers/${currentFirebaseUser.uid}');
+    driverRef.once().then((DataSnapshot snapshot) {
+      if (snapshot.value != null) {
+        currentDriverInfo = Driver.fromSnapshot(snapshot);
+      }
+    });
     PushNotificationService pushNotificationService = PushNotificationService();
     pushNotificationService.initialize(context);
     pushNotificationService.getToken();
