@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:cab_driver/brand_colors.dart';
 import 'package:cab_driver/globalvariable.dart';
 import 'package:cab_driver/helpers/helper_methods.dart';
+import 'package:cab_driver/helpers/mapkit_helper.dart';
 import 'package:cab_driver/models/trip_details.dart';
 import 'package:cab_driver/widgets/TaxiOutlineButton.dart';
 import 'package:cab_driver/widgets/progress_dialog.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class NewTripScreen extends StatefulWidget {
@@ -33,10 +35,57 @@ class _NewTripScreenState extends State<NewTripScreen> {
   List<LatLng> polylineCoordinates = [];
   PolylinePoints polylinePoints = PolylinePoints();
 
+  BitmapDescriptor movingMarkerIcon;
+  Position myPosition;
+
   @override
   void initState() {
     super.initState();
     acceptTrip();
+  }
+
+  void createMarker() {
+    if (movingMarkerIcon == null) {
+      ImageConfiguration imageConfiguration =
+          createLocalImageConfiguration(context, size: Size(2, 2));
+      BitmapDescriptor.fromAssetImage(
+              imageConfiguration,
+              (Platform.isIOS)
+                  ? 'images/car_ios.png'
+                  : 'images/car_android.png')
+          .then((icon) => movingMarkerIcon = icon);
+    }
+  }
+
+  void getLocationUpdates() {
+    LatLng oldPosition = LatLng(0, 0);
+    ridePositionStream = Geolocator.getPositionStream(
+            desiredAccuracy: LocationAccuracy.bestForNavigation)
+        .listen((Position position) {
+      myPosition = position;
+      currentPosition = position;
+      LatLng pos = LatLng(position.latitude, position.longitude);
+
+      var rotation = MapKitHelper.getMarkerRotation(oldPosition.latitude,
+          oldPosition.longitude, pos.latitude, pos.longitude);
+
+      Marker movingMarker = Marker(
+        markerId: MarkerId('moving'),
+        position: pos,
+        icon: movingMarkerIcon,
+        rotation: rotation,
+        infoWindow: InfoWindow(title: 'Current Location'),
+      );
+
+      setState(() {
+        CameraPosition cp = CameraPosition(target: pos, zoom: 17);
+        rideMapController.animateCamera(CameraUpdate.newCameraPosition(cp));
+
+        _markers.removeWhere((marker) => marker.markerId.value == 'moving');
+        _markers.add(movingMarker);
+      });
+      oldPosition = pos;
+    });
   }
 
   Future<void> getDirection(
@@ -158,6 +207,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
   }
 
   Widget build(BuildContext context) {
+    createMarker();
     return Scaffold(
       body: Stack(
         children: [
@@ -183,6 +233,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
                   LatLng(currentPosition.latitude, currentPosition.longitude);
               var pickupLatLng = widget.tripDetails.pickup;
               await getDirection(currentLatLng, pickupLatLng);
+              getLocationUpdates();
             },
           ),
           Positioned(

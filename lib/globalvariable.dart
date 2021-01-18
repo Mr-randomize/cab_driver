@@ -17,6 +17,7 @@ FirebaseUser currentFirebaseUser;
 DatabaseReference tripRequestRef;
 DatabaseReference rideRef;
 StreamSubscription<Position> homeTabPositionStream;
+StreamSubscription<Position> ridePositionStream;
 final assetsAudioPlayer = AssetsAudioPlayer();
 Position currentPosition;
 Driver currentDriverInfo;
