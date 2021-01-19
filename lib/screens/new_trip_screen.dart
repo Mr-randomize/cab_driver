@@ -6,6 +6,7 @@ import 'package:cab_driver/globalvariable.dart';
 import 'package:cab_driver/helpers/helper_methods.dart';
 import 'package:cab_driver/helpers/mapkit_helper.dart';
 import 'package:cab_driver/models/trip_details.dart';
+import 'package:cab_driver/widgets/CollectPaymentDialog.dart';
 import 'package:cab_driver/widgets/TaxiOutlineButton.dart';
 import 'package:cab_driver/widgets/progress_dialog.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -37,6 +38,16 @@ class _NewTripScreenState extends State<NewTripScreen> {
 
   BitmapDescriptor movingMarkerIcon;
   Position myPosition;
+  String status = 'accepted';
+  String duration = '';
+
+  bool isRequestingDirection = false;
+
+  String buttonTitle = 'ARRIVED';
+  Color buttonColor = BrandColors.colorGreen;
+
+  Timer timer;
+  int durationCounter = 0;
 
   @override
   void initState() {
@@ -85,6 +96,15 @@ class _NewTripScreenState extends State<NewTripScreen> {
         _markers.add(movingMarker);
       });
       oldPosition = pos;
+
+      updateTripDetails();
+
+      Map locationMap = {
+        'latitude': myPosition.latitude.toString(),
+        'longitude': myPosition.longitude.toString(),
+      };
+
+      rideRef.child('driver_location').set(locationMap);
     });
   }
 
@@ -187,6 +207,30 @@ class _NewTripScreenState extends State<NewTripScreen> {
     });
   }
 
+  void updateTripDetails() async {
+    if (!isRequestingDirection) {
+      isRequestingDirection = true;
+      if (myPosition == null) {
+        return;
+      }
+      var positionLatLng = LatLng(myPosition.latitude, myPosition.longitude);
+      LatLng destinationLatLng;
+      if (status == 'accepted') {
+        destinationLatLng = widget.tripDetails.pickup;
+      } else {
+        destinationLatLng = widget.tripDetails.destination;
+      }
+      var directionDetails = await HelperMethods.getDirectionDetails(
+          positionLatLng, destinationLatLng);
+      if (directionDetails != null) {
+        setState(() {
+          duration = directionDetails.durationText;
+        });
+      }
+      isRequestingDirection = false;
+    }
+  }
+
   void acceptTrip() {
     String rideId = widget.tripDetails.rideId;
     rideRef =
@@ -204,6 +248,51 @@ class _NewTripScreenState extends State<NewTripScreen> {
       'longitude': currentPosition.longitude.toString(),
     };
     rideRef.child('driver_location').set(locationMap);
+  }
+
+  void startTimer() {
+    const interval = Duration(seconds: 1);
+    timer = Timer.periodic(interval, (timer) {
+      durationCounter++;
+    });
+  }
+
+  void endTrip() async {
+    timer.cancel();
+    var currentLatLng = LatLng(myPosition.latitude, myPosition.longitude);
+    HelperMethods.showProgressDialog(context);
+    var directionDetails = await HelperMethods.getDirectionDetails(
+        widget.tripDetails.pickup, currentLatLng);
+    Navigator.pop(context);
+    int fares = HelperMethods.estimateFares(directionDetails, durationCounter);
+    rideRef.child('fares').set(fares.toString());
+    rideRef.child('status').set('ended');
+    ridePositionStream.cancel();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => CollectPayment(
+        paymentMethod: widget.tripDetails.paymentMethod,
+        fares: fares,
+      ),
+    );
+    topUpEarnings(fares);
+  }
+
+  void topUpEarnings(int fares) {
+    DatabaseReference earningsRef = FirebaseDatabase.instance
+        .reference()
+        .child('drivers/${currentFirebaseUser.uid}/earnings');
+    earningsRef.once().then((DataSnapshot snapshot) {
+      if (snapshot.value != null) {
+        double oldEarnings = double.parse(snapshot.value.toString());
+        double adjustedEarnings = (fares.toDouble() * 0.85) + oldEarnings;
+        earningsRef.set(adjustedEarnings.toStringAsFixed(2));
+      } else {
+        double adjustedEarnings = (fares.toDouble() * 0.85);
+        earningsRef.set(adjustedEarnings.toStringAsFixed(2));
+      }
+    });
   }
 
   Widget build(BuildContext context) {
@@ -262,7 +351,7 @@ class _NewTripScreenState extends State<NewTripScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '14 Mins',
+                      duration,
                       style: TextStyle(
                           fontSize: 14,
                           fontFamily: 'Brand-Bold',
@@ -325,9 +414,32 @@ class _NewTripScreenState extends State<NewTripScreen> {
                     ),
                     SizedBox(height: 25),
                     TaxiOutlineButton(
-                      title: 'ARRIVED',
-                      color: BrandColors.colorGreen,
-                      onPressed: () {},
+                      title: buttonTitle,
+                      color: buttonColor,
+                      onPressed: () async {
+                        if (status == 'accepted') {
+                          status = 'arrived';
+                          rideRef.child('status').set(status);
+                          setState(() {
+                            buttonTitle = 'START TRIP';
+                            buttonColor = BrandColors.colorAccentPurple;
+                          });
+                          HelperMethods.showProgressDialog(context);
+                          await getDirection(widget.tripDetails.pickup,
+                              widget.tripDetails.destination);
+                          Navigator.pop(context);
+                        } else if (status == 'arrived') {
+                          status = 'ontrip';
+                          rideRef.child('status').set(status);
+                          setState(() {
+                            buttonTitle = 'END TRIP';
+                            buttonColor = Colors.red[900];
+                          });
+                          startTimer();
+                        } else if (status == 'ontrip') {
+                          endTrip();
+                        }
+                      },
                     )
                   ],
                 ),
